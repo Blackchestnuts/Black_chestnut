@@ -16,13 +16,27 @@ export interface Conversation {
   messages: Message[]
 }
 
+export interface MemoryFolder {
+  id: string
+  name: string
+  icon: string
+  color: string
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+  _count?: { memories: number }
+}
+
 export interface MemoryItem {
   id: string
   category: string
   key: string
   value: string
+  folderId: string | null
+  source?: string | null
   createdAt: string
   updatedAt: string
+  folder?: MemoryFolder | null
 }
 
 interface AppState {
@@ -39,11 +53,15 @@ interface AppState {
   memories: MemoryItem[]
   isLoadingMemories: boolean
 
+  // 文件夹
+  folders: MemoryFolder[]
+  activeFolderId: string | 'all' | 'unsorted'
+
   // UI状态
   showMemoryPanel: boolean
   showSidebar: boolean
 
-  // Actions
+  // Setters
   setConversations: (conversations: Conversation[]) => void
   setCurrentConversation: (conversation: Conversation | null) => void
   setIsLoadingConversations: (v: boolean) => void
@@ -51,20 +69,30 @@ interface AppState {
   setIsSendingMessage: (v: boolean) => void
   setMemories: (memories: MemoryItem[]) => void
   setIsLoadingMemories: (v: boolean) => void
+  setFolders: (folders: MemoryFolder[]) => void
+  setActiveFolderId: (id: string | 'all' | 'unsorted') => void
   toggleMemoryPanel: () => void
   toggleSidebar: () => void
   setShowSidebar: (v: boolean) => void
 
-  // 复合Actions
+  // 对话 Actions
   fetchConversations: () => Promise<void>
   fetchConversation: (id: string) => Promise<void>
-  fetchMemories: () => Promise<void>
   sendMessage: (message: string) => Promise<string | null>
-  createConversation: () => Promise<string | null>
   deleteConversation: (id: string) => Promise<void>
+
+  // 记忆 Actions
+  fetchMemories: () => Promise<void>
   deleteMemory: (id: string) => Promise<void>
   updateMemory: (id: string, data: Partial<MemoryItem>) => Promise<void>
-  addMemory: (data: { category: string; key: string; value: string }) => Promise<void>
+  addMemory: (data: { category: string; key: string; value: string; folderId?: string | null }) => Promise<void>
+  moveMemoryToFolder: (memoryId: string, folderId: string | null) => Promise<void>
+
+  // 文件夹 Actions
+  fetchFolders: () => Promise<void>
+  createFolder: (data: { name: string; icon?: string; color?: string }) => Promise<void>
+  updateFolder: (id: string, data: Partial<MemoryFolder>) => Promise<void>
+  deleteFolder: (id: string) => Promise<void>
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -75,6 +103,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   isSendingMessage: false,
   memories: [],
   isLoadingMemories: false,
+  folders: [],
+  activeFolderId: 'all',
   showMemoryPanel: false,
   showSidebar: true,
 
@@ -85,6 +115,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setIsSendingMessage: (v) => set({ isSendingMessage: v }),
   setMemories: (memories) => set({ memories }),
   setIsLoadingMemories: (v) => set({ isLoadingMemories: v }),
+  setFolders: (folders) => set({ folders }),
+  setActiveFolderId: (id) => set({ activeFolderId: id }),
   toggleMemoryPanel: () => set((s) => ({ showMemoryPanel: !s.showMemoryPanel })),
   toggleSidebar: () => set((s) => ({ showSidebar: !s.showSidebar })),
   setShowSidebar: (v) => set({ showSidebar: v }),
@@ -122,6 +154,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  fetchFolders: async () => {
+    try {
+      const res = await fetch('/api/folders')
+      const data = await res.json()
+      set({ folders: Array.isArray(data) ? data : [] })
+    } catch {
+      // ignore
+    }
+  },
+
   sendMessage: async (message) => {
     const { currentConversation } = get()
     set({ isSendingMessage: true })
@@ -143,33 +185,21 @@ export const useAppStore = create<AppState>((set, get) => ({
         return null
       }
 
-      // 更新对话列表和当前对话
       await get().fetchConversations()
       if (data.conversationId) {
         await get().fetchConversation(data.conversationId)
       }
 
-      // 延迟刷新记忆（给后台提取时间）
-      setTimeout(() => get().fetchMemories(), 2000)
+      // 延迟刷新记忆
+      setTimeout(() => {
+        get().fetchMemories()
+        get().fetchFolders()
+      }, 2000)
 
       set({ isSendingMessage: false })
       return data.reply
     } catch {
       set({ isSendingMessage: false })
-      return null
-    }
-  },
-
-  createConversation: async () => {
-    try {
-      const res = await fetch('/api/conversations', { method: 'POST' })
-      const data = await res.json()
-      await get().fetchConversations()
-      if (data.id) {
-        await get().fetchConversation(data.id)
-      }
-      return data.id
-    } catch {
       return null
     }
   },
@@ -216,6 +246,57 @@ export const useAppStore = create<AppState>((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       })
+      await get().fetchMemories()
+      await get().fetchFolders()
+    } catch {
+      // ignore
+    }
+  },
+
+  moveMemoryToFolder: async (memoryId, folderId) => {
+    try {
+      await fetch(`/api/memories/${memoryId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderId }),
+      })
+      await get().fetchMemories()
+      await get().fetchFolders()
+    } catch {
+      // ignore
+    }
+  },
+
+  createFolder: async (data) => {
+    try {
+      await fetch('/api/folders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      await get().fetchFolders()
+    } catch {
+      // ignore
+    }
+  },
+
+  updateFolder: async (id, data) => {
+    try {
+      await fetch(`/api/folders/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      await get().fetchFolders()
+    } catch {
+      // ignore
+    }
+  },
+
+  deleteFolder: async (id) => {
+    try {
+      await fetch(`/api/folders/${id}`, { method: 'DELETE' })
+      await get().fetchFolders()
       await get().fetchMemories()
     } catch {
       // ignore

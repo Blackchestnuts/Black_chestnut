@@ -8,6 +8,7 @@ export async function GET() {
     const memories = await db.memory.findMany({
       where: { userId: user.id },
       orderBy: { updatedAt: 'desc' },
+      include: { folder: true },
     })
     return Response.json(memories)
   } catch (error) {
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
   try {
     const user = await ensureDefaultUser()
     const body = await request.json()
-    const { category, key, value } = body
+    const { category, key, value, folderId } = body
 
     if (!category || !key || !value) {
       return Response.json({ error: '分类、键名和值都不能为空' }, { status: 400 })
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
         category,
         key,
         value,
+        folderId: folderId || null,
       },
     })
     return Response.json(memory)

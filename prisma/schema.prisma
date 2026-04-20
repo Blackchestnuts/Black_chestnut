@@ -8,14 +8,15 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String   @default("用户")
+  id         String   @id @default(cuid())
+  name       String   @default("用户")
   occupation String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   conversations Conversation[]
   memories      Memory[]
+  memoryFolders MemoryFolder[]
 }
 
 model Conversation {
@@ -44,9 +45,26 @@ model Message {
   @@index([conversationId])
 }
 
+model MemoryFolder {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String   // 文件夹名称
+  icon      String   @default("📁") // 文件夹图标
+  color     String   @default("bg-gray-500/10 text-gray-600 border-gray-500/20") // 文件夹颜色样式
+  sortOrder Int      @default(0) // 排序
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memories Memory[]
+
+  @@index([userId])
+}
+
 model Memory {
   id        String   @id @default(cuid())
   userId    String
+  folderId  String?  // 归属文件夹，null表示未分类
   category  String   // "profile" | "preference" | "goal" | "project" | "insight" | "fact"
   key       String   // 简短描述，如"职业"、"偏好技术"
   value     String   // 具体内容
@@ -54,8 +72,10 @@ model Memory {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder MemoryFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([category])
+  @@index([folderId])
 }

@@ -8,7 +8,7 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { category, key, value } = body
+    const { category, key, value, folderId } = body
 
     const memory = await db.memory.update({
       where: { id },
@@ -16,6 +16,7 @@ export async function PUT(
         ...(category && { category }),
         ...(key && { key }),
         ...(value && { value }),
+        ...(folderId !== undefined && { folderId }),
         updatedAt: new Date(),
       },
     })
