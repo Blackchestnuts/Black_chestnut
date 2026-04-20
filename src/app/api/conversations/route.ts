@@ -1,16 +1,12 @@
 import { db } from '@/lib/db'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/auth'
+import { ensureDefaultUser } from '@/lib/memory'
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return Response.json({ error: '请先登录' }, { status: 401 })
-    }
+    const user = await ensureDefaultUser()
 
     const conversations = await db.conversation.findMany({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
       orderBy: { updatedAt: 'desc' },
       include: {
         messages: { orderBy: { createdAt: 'desc' }, take: 1 },
@@ -25,13 +21,10 @@ export async function GET() {
 
 export async function POST() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return Response.json({ error: '请先登录' }, { status: 401 })
-    }
+    const user = await ensureDefaultUser()
 
     const conversation = await db.conversation.create({
-      data: { userId: session.user.id, title: '新对话' },
+      data: { userId: user.id, title: '新对话' },
     })
     return Response.json(conversation)
   } catch (error) {

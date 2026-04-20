@@ -1,17 +1,13 @@
 import { db } from '@/lib/db'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/auth'
+import { ensureDefaultUser } from '@/lib/memory'
 
 // 获取所有文件夹
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return Response.json({ error: '请先登录' }, { status: 401 })
-    }
+    const user = await ensureDefaultUser()
 
     const folders = await db.memoryFolder.findMany({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
       orderBy: { sortOrder: 'asc' },
       include: {
         _count: { select: { memories: true } },
@@ -27,10 +23,7 @@ export async function GET() {
 // 创建文件夹
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return Response.json({ error: '请先登录' }, { status: 401 })
-    }
+    const user = await ensureDefaultUser()
 
     const body = await request.json()
     const { name, icon, color } = body
@@ -41,14 +34,14 @@ export async function POST(request: Request) {
 
     // 获取当前最大sortOrder
     const maxSort = await db.memoryFolder.findFirst({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
       orderBy: { sortOrder: 'desc' },
       select: { sortOrder: true },
     })
 
     const folder = await db.memoryFolder.create({
       data: {
-        userId: session.user.id,
+        userId: user.id,
         name: name.trim(),
         icon: icon || '📁',
         color: color || 'bg-gray-500/10 text-gray-600 border-gray-500/20',

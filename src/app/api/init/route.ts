@@ -1,29 +1,16 @@
 import { db } from '@/lib/db'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/auth'
+import { ensureDefaultUser } from '@/lib/memory'
 
 // 获取当前用户信息和统计
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return Response.json({ error: '请先登录' }, { status: 401 })
-    }
-
-    const user = await db.user.findUnique({
-      where: { id: session.user.id },
-      select: { id: true, name: true, email: true, occupation: true },
-    })
-
-    if (!user) {
-      return Response.json({ error: '用户不存在' }, { status: 404 })
-    }
+    const user = await ensureDefaultUser()
 
     const memoryCount = await db.memory.count({ where: { userId: user.id } })
     const conversationCount = await db.conversation.count({ where: { userId: user.id } })
 
     return Response.json({
-      user,
+      user: { id: user.id, name: user.name, occupation: user.occupation },
       stats: { memoryCount, conversationCount },
     })
   } catch (error) {

@@ -1,16 +1,10 @@
 import { db } from '@/lib/db'
-import { buildMemoryPrompt, extractMemoriesFromMessage, getConversationHistory, markStaleMemories, cleanupExpiredMemories, TOKEN_BUDGET, estimateTokens } from '@/lib/memory'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/auth'
+import { buildMemoryPrompt, extractMemoriesFromMessage, ensureDefaultUser } from '@/lib/memory'
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return Response.json({ error: '请先登录' }, { status: 401 })
-    }
-
-    const userId = session.user.id
+    const user = await ensureDefaultUser()
+    const userId = user.id
     const body = await request.json()
     const { message, conversationId } = body
 
@@ -42,21 +36,17 @@ export async function POST(request: Request) {
       data: { conversationId: conversation.id, role: 'user', content: message },
     })
 
-    // 构建带记忆的system prompt（滑动窗口 + 话题相关性）
-    const { prompt: systemPrompt, tokenCount: systemTokenCount } = await buildMemoryPrompt(userId, message)
+    // 构建带记忆的system prompt
+    const { prompt: systemPrompt } = await buildMemoryPrompt(userId)
 
-    // 获取对话历史（自动压缩 + token预算）
-    const historyMessages = await getConversationHistory(conversation.id, systemTokenCount)
-
-    // 如果对话有摘要，注入到system prompt中
-    let finalSystemPrompt = systemPrompt
-    if (conversation.summary) {
-      finalSystemPrompt += `\n\n📋 早期对话摘要:\n${conversation.summary}`
-    }
+    // 获取对话历史
+    const historyMessages = conversation.messages
+      .filter((m) => m.role !== 'system')
+      .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
     // 组装消息列表
     const chatMessages = [
-      { role: 'system' as const, content: finalSystemPrompt },
+      { role: 'system' as const, content: systemPrompt },
       ...historyMessages,
       { role: 'user' as const, content: message },
     ]
@@ -81,13 +71,6 @@ export async function POST(request: Request) {
     extractMemoriesFromMessage(userId, message, assistantContent).catch((err) =>
       console.error('Background memory extraction failed:', err)
     )
-
-    // 异步清理过期记忆（低频执行，每次对话1%概率触发）
-    if (Math.random() < 0.01) {
-      cleanupExpiredMemories(userId).catch((err) =>
-        console.error('Memory cleanup failed:', err)
-      )
-    }
 
     return Response.json({
       conversationId: conversation.id,

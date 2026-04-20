@@ -8,67 +8,21 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String    @default("用户")
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  password      String?   // hashed password for credential login
-  occupation    String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id         String   @id @default(cuid())
+  name       String   @default("用户")
+  occupation String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   conversations Conversation[]
   memories      Memory[]
   memoryFolders MemoryFolder[]
-  accounts      Account[]
-  sessions      Session[]
-}
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String?
-  access_token      String?
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String?
-  session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-  @@index([userId])
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
 }
 
 model Conversation {
   id        String   @id @default(cuid())
   userId    String
   title     String   @default("新对话")
-  summary   String?  // 压缩后的对话摘要
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -81,7 +35,7 @@ model Conversation {
 model Message {
   id             String   @id @default(cuid())
   conversationId String
-  role           String   // "user" | "assistant" | "system"
+  role           String // "user" | "assistant" | "system"
   content        String
   createdAt      DateTime @default(now())
 
@@ -107,19 +61,15 @@ model MemoryFolder {
 }
 
 model Memory {
-  id         String    @id @default(cuid())
-  userId     String
-  folderId   String?
-  category   String    // "profile" | "preference" | "goal" | "project" | "insight" | "fact"
-  key        String
-  value      String
-  source     String?
-  accessCount Int      @default(0)    // 被引用次数（用于评估重要性）
-  lastAccessedAt DateTime? @default(now()) // 最后一次被注入对话的时间
-  expiresAt  DateTime?                 // 过期时间，null表示永不过期
-  isStale    Boolean   @default(false) // 是否标记为过时
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id        String    @id @default(cuid())
+  userId    String
+  folderId  String?
+  category  String    // "profile" | "preference" | "goal" | "project" | "insight" | "fact"
+  key       String
+  value     String
+  source    String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   folder MemoryFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
@@ -127,6 +77,4 @@ model Memory {
   @@index([userId])
   @@index([category])
   @@index([folderId])
-  @@index([isStale])
-  @@index([expiresAt])
 }

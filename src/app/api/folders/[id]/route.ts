@@ -1,6 +1,5 @@
 import { db } from '@/lib/db'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/auth'
+import { ensureDefaultUser } from '@/lib/memory'
 
 // 更新文件夹
 export async function PUT(
@@ -8,18 +7,14 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return Response.json({ error: '请先登录' }, { status: 401 })
-    }
-
+    const user = await ensureDefaultUser()
     const { id } = await params
     const body = await request.json()
     const { name, icon, color, sortOrder } = body
 
     // 验证文件夹属于当前用户
     const existing = await db.memoryFolder.findFirst({
-      where: { id, userId: session.user.id },
+      where: { id, userId: user.id },
     })
     if (!existing) {
       return Response.json({ error: '文件夹不存在或无权操作' }, { status: 403 })
@@ -48,16 +43,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return Response.json({ error: '请先登录' }, { status: 401 })
-    }
-
+    const user = await ensureDefaultUser()
     const { id } = await params
 
     // 验证文件夹属于当前用户
     const existing = await db.memoryFolder.findFirst({
-      where: { id, userId: session.user.id },
+      where: { id, userId: user.id },
     })
     if (!existing) {
       return Response.json({ error: '文件夹不存在或无权操作' }, { status: 403 })
