@@ -2,7 +2,7 @@
 
 import { useAppStore } from '@/store/useAppStore'
 import { useRef, useEffect, useState } from 'react'
-import { Send, Loader2, Brain, Sparkles } from 'lucide-react'
+import { Send, Loader2, Brain, Sparkles, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -17,6 +17,8 @@ export function ChatArea() {
     sendMessage,
     toggleMemoryPanel,
     memories,
+    showSidebar,
+    setShowSidebar,
   } = useAppStore()
 
   const [input, setInput] = useState('')
@@ -57,60 +59,27 @@ export function ChatArea() {
     target.style.height = Math.min(target.scrollHeight, 200) + 'px'
   }
 
-  // 空状态
-  if (!currentConversation) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
-        <div className="max-w-md text-center space-y-6">
-          <div className="mx-auto w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-            <Brain className="h-10 w-10 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold mb-2">AI记忆助手</h2>
-            <p className="text-muted-foreground">
-              我能记住你告诉我的一切，跨对话持续了解你。<br />
-              直接开始聊天吧！
-            </p>
-          </div>
-          {memories.length > 0 && (
-            <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 text-sm">
-              <div className="flex items-center gap-2 text-primary font-medium mb-1">
-                <Sparkles className="h-4 w-4" />
-                我已记住你 {memories.length} 条信息
-              </div>
-              <p className="text-muted-foreground text-xs">
-                在新对话中，我会自动运用这些记忆
-              </p>
-            </div>
-          )}
-          <div className="grid grid-cols-1 gap-2 text-sm text-left">
-            {[
-              '👋 你好，我叫张三，是一名产品经理',
-              '🎯 我正在做一个AI记忆系统项目',
-              '💡 我喜欢简洁明了的技术回复',
-            ].map((suggestion, i) => (
-              <button
-                key={i}
-                className="p-3 rounded-lg border hover:bg-muted transition-colors text-left"
-                onClick={() => {
-                  setInput(suggestion)
-                  textareaRef.current?.focus()
-                }}
-              >
-                {suggestion}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
+  const hasConversation = !!currentConversation
 
   return (
     <div className="flex-1 flex flex-col h-full min-w-0">
       {/* 顶部栏 */}
-      <div className="h-14 border-b flex items-center justify-between px-4 shrink-0">
-        <div className="font-medium truncate">{currentConversation.title}</div>
+      <div className="h-14 border-b flex items-center justify-between px-4 shrink-0 gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {!showSidebar && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={() => setShowSidebar(true)}
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
+          )}
+          <div className="font-medium truncate">
+            {hasConversation ? currentConversation.title : 'AI记忆助手'}
+          </div>
+        </div>
         <Button
           variant="outline"
           size="sm"
@@ -130,7 +99,52 @@ export function ChatArea() {
       {/* 消息区域 */}
       <ScrollArea className="flex-1 p-4">
         <div className="max-w-3xl mx-auto space-y-4">
-          {messages.length === 0 ? (
+          {!hasConversation ? (
+            /* 欢迎页面 */
+            <div className="flex flex-col items-center justify-center py-16">
+              <div className="max-w-md text-center space-y-6">
+                <div className="mx-auto w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Brain className="h-10 w-10 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold mb-2">AI记忆助手</h2>
+                  <p className="text-muted-foreground">
+                    我能记住你告诉我的一切，跨对话持续了解你。<br />
+                    直接在下方输入开始聊天吧！
+                  </p>
+                </div>
+                {memories.length > 0 && (
+                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 text-sm">
+                    <div className="flex items-center gap-2 text-primary font-medium mb-1">
+                      <Sparkles className="h-4 w-4" />
+                      我已记住你 {memories.length} 条信息
+                    </div>
+                    <p className="text-muted-foreground text-xs">
+                      在新对话中，我会自动运用这些记忆
+                    </p>
+                  </div>
+                )}
+                <div className="grid grid-cols-1 gap-2 text-sm text-left">
+                  {[
+                    '你好，我叫张三，是一名产品经理',
+                    '我正在做一个AI记忆系统项目',
+                    '我喜欢简洁明了的技术回复',
+                  ].map((suggestion, i) => (
+                    <button
+                      key={i}
+                      className="p-3 rounded-lg border hover:bg-muted transition-colors text-left"
+                      onClick={() => {
+                        setInput(suggestion)
+                        textareaRef.current?.focus()
+                      }}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : messages.length === 0 ? (
             <div className="text-center text-muted-foreground py-12">
               开始你的对话吧！我会自动记住重要信息。
             </div>
@@ -186,7 +200,7 @@ export function ChatArea() {
         </div>
       </ScrollArea>
 
-      {/* 输入区域 */}
+      {/* 输入区域 - 始终显示 */}
       <div className="border-t p-4 shrink-0">
         <div className="max-w-3xl mx-auto flex gap-2 items-end">
           <Textarea
