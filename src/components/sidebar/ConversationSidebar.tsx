@@ -4,7 +4,6 @@ import { useAppStore } from '@/store/useAppStore'
 import { useEffect, useState } from 'react'
 import { Plus, MessageSquare, Trash2, ChevronLeft, Menu, Brain } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,7 +24,6 @@ export function ConversationSidebar() {
     showSidebar,
     fetchConversations,
     fetchConversation,
-    createConversation,
     deleteConversation,
     setShowSidebar,
     fetchMemories,
@@ -87,7 +85,7 @@ export function ConversationSidebar() {
     <>
       <div className="w-72 border-r bg-muted/30 flex flex-col h-full shrink-0">
         {/* 头部 */}
-        <div className="p-4 border-b">
+        <div className="p-4 border-b shrink-0">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Brain className="h-5 w-5 text-primary" />
@@ -111,8 +109,8 @@ export function ConversationSidebar() {
           </Button>
         </div>
 
-        {/* 对话列表 */}
-        <ScrollArea className="flex-1">
+        {/* 对话列表 - 自定义滚动条 */}
+        <div className="flex-1 custom-scrollbar overflow-y-auto">
           <div className="p-2 space-y-1">
             {isLoadingConversations ? (
               <div className="p-4 text-center text-sm text-muted-foreground">
@@ -154,10 +152,10 @@ export function ConversationSidebar() {
               ))
             )}
           </div>
-        </ScrollArea>
+        </div>
 
         {/* 底部提示 */}
-        <div className="p-3 border-t text-xs text-muted-foreground text-center">
+        <div className="p-3 border-t text-xs text-muted-foreground text-center shrink-0">
           AI会自动记住你的偏好和信息
         </div>
       </div>

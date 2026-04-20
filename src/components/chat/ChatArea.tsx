@@ -5,7 +5,6 @@ import { useRef, useEffect, useState } from 'react'
 import { Send, Loader2, Brain, Sparkles, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 
@@ -23,13 +22,14 @@ export function ChatArea() {
 
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const messages = currentConversation?.messages || []
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, isSendingMessage])
 
   const handleSend = async () => {
     const trimmed = input.trim()
@@ -96,8 +96,8 @@ export function ChatArea() {
         </Button>
       </div>
 
-      {/* 消息区域 */}
-      <ScrollArea className="flex-1 p-4">
+      {/* 消息区域 - 使用自定义滚动条 */}
+      <div ref={scrollContainerRef} className="flex-1 p-4 custom-scrollbar overflow-y-auto">
         <div className="max-w-3xl mx-auto space-y-4">
           {!hasConversation ? (
             /* 欢迎页面 */
@@ -198,7 +198,7 @@ export function ChatArea() {
           )}
           <div ref={messagesEndRef} />
         </div>
-      </ScrollArea>
+      </div>
 
       {/* 输入区域 - 始终显示 */}
       <div className="border-t p-4 shrink-0">

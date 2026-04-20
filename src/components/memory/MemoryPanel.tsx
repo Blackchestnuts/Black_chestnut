@@ -17,7 +17,6 @@ import {
   Check,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -88,7 +87,7 @@ export function MemoryPanel() {
   return (
     <div className="w-80 border-l bg-muted/30 flex flex-col h-full shrink-0">
       {/* 头部 */}
-      <div className="p-4 border-b">
+      <div className="p-4 border-b shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Brain className="h-5 w-5 text-primary" />
@@ -110,7 +109,7 @@ export function MemoryPanel() {
 
       {/* 添加记忆 */}
       {isAdding && (
-        <div className="p-3 border-b bg-background space-y-2">
+        <div className="p-3 border-b bg-background space-y-2 shrink-0">
           <Select value={newCategory} onValueChange={setNewCategory}>
             <SelectTrigger className="h-8 text-sm">
               <SelectValue />
@@ -142,8 +141,8 @@ export function MemoryPanel() {
         </div>
       )}
 
-      {/* 记忆列表 */}
-      <ScrollArea className="flex-1">
+      {/* 记忆列表 - 自定义滚动条 */}
+      <div className="flex-1 custom-scrollbar overflow-y-auto">
         <div className="p-3 space-y-4">
           {memories.length === 0 ? (
             <div className="text-center text-sm text-muted-foreground py-8">
@@ -232,10 +231,10 @@ export function MemoryPanel() {
             })
           )}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* 底部提示 */}
-      <div className="p-3 border-t text-xs text-muted-foreground text-center">
+      <div className="p-3 border-t text-xs text-muted-foreground text-center shrink-0">
         记忆在每次对话后自动提取
       </div>
     </div>
