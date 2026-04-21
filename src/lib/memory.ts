@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { chatCompletion } from '@/lib/ai'
 
 // 确保默认用户存在
 export async function ensureDefaultUser() {
@@ -67,9 +68,6 @@ export async function extractMemoriesFromMessage(
   assistantMessage: string
 ) {
   try {
-    const ZAI = (await import('z-ai-web-dev-sdk')).default
-    const zai = await ZAI.create()
-
     const extractPrompt = `分析以下对话内容，提取值得长期记住的信息。
 
 用户说: ${userMessage}
@@ -94,7 +92,7 @@ export async function extractMemoriesFromMessage(
 - 如果没有值得记忆的信息，返回空数组
 - 只返回JSON，不要其他文字`
 
-    const completion = await zai.chat.completions.create({
+    const result = await chatCompletion({
       messages: [
         { role: 'system', content: '你是一个信息提取助手，只返回JSON格式的结果。' },
         { role: 'user', content: extractPrompt },
@@ -102,7 +100,7 @@ export async function extractMemoriesFromMessage(
       temperature: 0.3,
     })
 
-    const content = completion.choices[0]?.message?.content || ''
+    const content = result.content || ''
 
     let jsonStr = content
     const jsonMatch = content.match(/\{[\s\S]*\}/)

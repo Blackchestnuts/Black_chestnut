@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { buildMemoryPrompt, extractMemoriesFromMessage, ensureDefaultUser } from '@/lib/memory'
+import { chatCompletion } from '@/lib/ai'
 
 export async function POST(request: Request) {
   try {
@@ -51,16 +52,13 @@ export async function POST(request: Request) {
       { role: 'user' as const, content: message },
     ]
 
-    // 调用LLM
-    const ZAI = (await import('z-ai-web-dev-sdk')).default
-    const zai = await ZAI.create()
-
-    const completion = await zai.chat.completions.create({
+    // 调用 DeepSeek LLM
+    const result = await chatCompletion({
       messages: chatMessages,
       temperature: 0.7,
     })
 
-    const assistantContent = completion.choices[0]?.message?.content || '抱歉，我无法生成回复。'
+    const assistantContent = result.content || '抱歉，我无法生成回复。'
 
     // 保存助手回复
     await db.message.create({
