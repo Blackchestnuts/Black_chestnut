@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { chatCompletion } from '@/lib/ai'
+import { getEmbedding, cosineSimilarity } from '@/lib/embedding'
 
 // 确保默认用户存在
 export async function ensureDefaultUser() {
@@ -12,8 +13,69 @@ export async function ensureDefaultUser() {
   return user
 }
 
-// 构建记忆prompt - 注入所有记忆
-export async function buildMemoryPrompt(userId: string) {
+// 记忆注入限制配置
+const MAX_MEMORIES_PER_CATEGORY = 3  // 每个分类最多注入3条
+const MAX_MEMORIES_TOTAL = 18         // 总共最多注入18条
+
+// 混合评分权重配置
+const KEYWORD_WEIGHT = 0.4    // 关键词分数权重
+const SEMANTIC_WEIGHT = 0.6   // 语义相似度权重
+
+// 中文停用词表（常见无意义词，不用于匹配）
+const STOP_WORDS = new Set([
+  '的', '了', '是', '在', '我', '有', '和', '就', '不', '人', '都', '一',
+  '这', '中', '大', '为', '上', '个', '国', '们', '到', '说', '时', '也',
+  '子', '得', '里', '去', '那', '要', '会', '对', '着', '能', '他', '她',
+  '你', '它', '吗', '吧', '啊', '呢', '嗯', '哦', '把', '被', '让', '给',
+  '很', '多', '什么', '怎么', '如何', '可以', '请', '帮', '想', '知道',
+  '还是', '但是', '因为', '所以', '如果', '虽然', '可能', '应该', '已经',
+  '一个', '一些', '这个', '那个', '这些', '那些', '自己', '没有', '不是',
+])
+
+// 从文本中提取关键词
+function extractKeywords(text: string): string[] {
+  const cleaned = text.replace(/[，。！？、；：""''（）【】《》\s,.!?;:'"()\[\]{}<>]/g, ' ')
+  const words = cleaned.split(/\s+/).filter(w => w.length > 0)
+
+  const keywords: string[] = []
+  for (const word of words) {
+    if (STOP_WORDS.has(word)) continue
+    if (word.length === 1) continue
+
+    keywords.push(word.toLowerCase())
+
+    // 对中文文本做2字滑动窗口
+    if (/[\u4e00-\u9fa5]/.test(word) && word.length >= 3) {
+      for (let i = 0; i < word.length - 1; i++) {
+        const bigram = word.substring(i, i + 2)
+        if (!STOP_WORDS.has(bigram) && bigram.length === 2) {
+          keywords.push(bigram)
+        }
+      }
+    }
+  }
+
+  return [...new Set(keywords)]
+}
+
+// 计算记忆与关键词的相关性分数
+function calculateKeywordScore(memory: { key: string; value: string }, keywords: string[]): number {
+  let score = 0
+  const keyLower = memory.key.toLowerCase()
+  const valueLower = memory.value.toLowerCase()
+
+  for (const kw of keywords) {
+    const keyword = kw.toLowerCase()
+    if (keyLower === keyword) score += 10
+    else if (keyLower.includes(keyword)) score += 5
+    else if (valueLower.includes(keyword)) score += 3
+  }
+
+  return score
+}
+
+// 构建记忆prompt - 混合评分（关键词 + 语义相似度）
+export async function buildMemoryPrompt(userId: string, userMessage?: string) {
   const memories = await db.memory.findMany({
     where: { userId },
     orderBy: { updatedAt: 'desc' },
@@ -36,10 +98,74 @@ export async function buildMemoryPrompt(userId: string) {
     fact: '📌 事实记录',
   }
 
+  // 混合评分排序
+  let sortedMemories = memories
+  if (userMessage) {
+    const keywords = extractKeywords(userMessage)
+
+    // 尝试生成用户消息的语义向量
+    let messageEmbedding: number[] | null = null
+    try {
+      messageEmbedding = await getEmbedding(userMessage)
+    } catch {
+      // embedding 不可用时，只用关键词评分
+    }
+
+    // 计算每条记忆的综合分数
+    const scored = memories.map(m => {
+      // 关键词分数（归一化到 0-1）
+      const keywordScore = keywords.length > 0
+        ? Math.min(calculateKeywordScore(m, keywords) / 20, 1)
+        : 0
+
+      // 语义相似度分数（0-1）
+      let semanticScore = 0
+      if (messageEmbedding && m.embedding) {
+        try {
+          const memEmbedding = JSON.parse(m.embedding) as number[]
+          semanticScore = cosineSimilarity(messageEmbedding, memEmbedding)
+          // 将余弦相似度从 [-1,1] 映射到 [0,1]
+          semanticScore = (semanticScore + 1) / 2
+        } catch {
+          // 解析失败，忽略语义分数
+        }
+      }
+
+      // 混合分数：如果 embedding 可用，使用混合权重；否则只用关键词
+      const hasEmbedding = messageEmbedding !== null && m.embedding !== null
+      const relevance = hasEmbedding
+        ? keywordScore * KEYWORD_WEIGHT + semanticScore * SEMANTIC_WEIGHT
+        : keywordScore
+
+      return {
+        memory: m,
+        relevance,
+      }
+    })
+
+    // 按综合分数降序，相同分数按更新时间降序
+    scored.sort((a, b) => b.relevance - a.relevance || b.memory.updatedAt.getTime() - a.memory.updatedAt.getTime())
+    sortedMemories = scored.map(s => s.memory)
+  }
+
+  // 按分类分组，每个分类只取最新的 MAX_MEMORIES_PER_CATEGORY 条
   const categorized: Record<string, string[]> = {}
-  for (const m of memories) {
-    if (!categorized[m.category]) categorized[m.category] = []
+  const categoryCounts: Record<string, number> = {}
+  let totalCount = 0
+
+  for (const m of sortedMemories) {
+    if (totalCount >= MAX_MEMORIES_TOTAL) break
+
+    if (!categorized[m.category]) {
+      categorized[m.category] = []
+      categoryCounts[m.category] = 0
+    }
+
+    if (categoryCounts[m.category] >= MAX_MEMORIES_PER_CATEGORY) continue
+
     categorized[m.category].push(`- ${m.key}: ${m.value}`)
+    categoryCounts[m.category]++
+    totalCount++
   }
 
   let memorySection = ''
@@ -48,16 +174,37 @@ export async function buildMemoryPrompt(userId: string) {
     memorySection += `\n${label}:\n${items.join('\n')}\n`
   }
 
+  const totalMemories = memories.length
+  const truncationNote = totalMemories > MAX_MEMORIES_TOTAL
+    ? `\n（注：你还有 ${totalMemories - MAX_MEMORIES_TOTAL} 条记忆未显示，如需了解更多可以主动询问用户）\n`
+    : ''
+
   return {
     prompt: `你是一个拥有跨对话记忆能力的智能助手。以下是你记住的关于用户的信息：
 
-${memorySection}
+${memorySection}${truncationNote}
 重要指令：
 1. 在回复时，主动运用上述记忆信息，让用户感受到你"记得"他们
 2. 如果用户的问题与记忆中的信息相关，自然地引用相关记忆
 3. 不要生硬地罗列记忆，而是自然地融入对话中
 4. 如果发现记忆中有过时或错误的信息，可以主动确认更新
 5. 当用户告诉你新的个人信息、偏好、目标时，这些信息值得被记住`,
+  }
+}
+
+// 为记忆生成并保存 embedding
+async function generateAndSaveEmbedding(memoryId: string, text: string) {
+  try {
+    const embedding = await getEmbedding(text)
+    if (embedding) {
+      await db.memory.update({
+        where: { id: memoryId },
+        data: { embedding: JSON.stringify(embedding) },
+      })
+    }
+  } catch (error) {
+    // embedding 生成失败不影响主流程
+    console.error('Failed to generate embedding for memory:', memoryId, error)
   }
 }
 
@@ -123,8 +270,10 @@ export async function extractMemoriesFromMessage(
           where: { id: existing.id },
           data: { value: mem.value },
         })
+        // 异步重新生成 embedding
+        generateAndSaveEmbedding(existing.id, `${mem.key}: ${mem.value}`).catch(() => {})
       } else {
-        await db.memory.create({
+        const newMemory = await db.memory.create({
           data: {
             userId,
             category: mem.category,
@@ -132,6 +281,8 @@ export async function extractMemoriesFromMessage(
             value: mem.value,
           },
         })
+        // 异步生成 embedding
+        generateAndSaveEmbedding(newMemory.id, `${mem.key}: ${mem.value}`).catch(() => {})
       }
     }
 
@@ -140,4 +291,29 @@ export async function extractMemoriesFromMessage(
     console.error('Memory extraction failed:', error)
     return 0
   }
+}
+
+// 回填已有记忆的 embedding（用于数据迁移）
+export async function backfillEmbeddings(userId: string) {
+  const memories = await db.memory.findMany({
+    where: { userId, embedding: null },
+  })
+
+  let count = 0
+  for (const m of memories) {
+    try {
+      const embedding = await getEmbedding(`${m.key}: ${m.value}`)
+      if (embedding) {
+        await db.memory.update({
+          where: { id: m.id },
+          data: { embedding: JSON.stringify(embedding) },
+        })
+        count++
+      }
+    } catch {
+      // 跳过失败的单条
+    }
+  }
+
+  return { total: memories.length, processed: count }
 }
