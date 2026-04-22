@@ -12,7 +12,11 @@ export async function ensureDefaultUser() {
   return user
 }
 
-// 构建记忆prompt - 注入所有记忆
+// 记忆注入限制配置
+const MAX_MEMORIES_PER_CATEGORY = 3  // 每个分类最多注入3条
+const MAX_MEMORIES_TOTAL = 18         // 总共最多注入18条
+
+// 构建记忆prompt - 智能限制注入数量
 export async function buildMemoryPrompt(userId: string) {
   const memories = await db.memory.findMany({
     where: { userId },
@@ -36,10 +40,26 @@ export async function buildMemoryPrompt(userId: string) {
     fact: '📌 事实记录',
   }
 
+  // 按分类分组，每个分类只取最新的 MAX_MEMORIES_PER_CATEGORY 条
   const categorized: Record<string, string[]> = {}
+  const categoryCounts: Record<string, number> = {}
+  let totalCount = 0
+
   for (const m of memories) {
-    if (!categorized[m.category]) categorized[m.category] = []
+    // 超过总量限制，停止添加
+    if (totalCount >= MAX_MEMORIES_TOTAL) break
+
+    if (!categorized[m.category]) {
+      categorized[m.category] = []
+      categoryCounts[m.category] = 0
+    }
+
+    // 每个分类只取最新的 N 条
+    if (categoryCounts[m.category] >= MAX_MEMORIES_PER_CATEGORY) continue
+
     categorized[m.category].push(`- ${m.key}: ${m.value}`)
+    categoryCounts[m.category]++
+    totalCount++
   }
 
   let memorySection = ''
@@ -48,10 +68,16 @@ export async function buildMemoryPrompt(userId: string) {
     memorySection += `\n${label}:\n${items.join('\n')}\n`
   }
 
+  // 如果有记忆被截断，添加提示
+  const totalMemories = memories.length
+  const truncationNote = totalMemories > MAX_MEMORIES_TOTAL
+    ? `\n（注：你还有 ${totalMemories - MAX_MEMORIES_TOTAL} 条记忆未显示，如需了解更多可以主动询问用户）\n`
+    : ''
+
   return {
     prompt: `你是一个拥有跨对话记忆能力的智能助手。以下是你记住的关于用户的信息：
 
-${memorySection}
+${memorySection}${truncationNote}
 重要指令：
 1. 在回复时，主动运用上述记忆信息，让用户感受到你"记得"他们
 2. 如果用户的问题与记忆中的信息相关，自然地引用相关记忆
